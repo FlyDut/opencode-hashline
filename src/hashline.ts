@@ -324,7 +324,10 @@ export function formatFileWithHashes(
   hashLen?: number,
   prefix?: string | false,
   includeFileRev?: boolean,
+  startLine?: number,
+  fileRevHash?: string,
 ): string {
+  const fileStartLine = startLine ?? 1;
   const normalized = content.includes("\r\n") ? content.replace(/\r\n/g, "\n") : content;
   const lines = normalized.split("\n");
   const effectiveLen = hashLen && hashLen >= 3 ? hashLen : getAdaptiveHashLength(lines.length);
@@ -336,7 +339,7 @@ export function formatFileWithHashes(
   const hashes: string[] = new Array(lines.length);
 
   for (let idx = 0; idx < lines.length; idx++) {
-    hashes[idx] = computeLineHash(idx, lines[idx], effectiveLen);
+    hashes[idx] = computeLineHash(idx + fileStartLine - 1, lines[idx], effectiveLen);
   }
 
   // Iteratively resolve collisions — only rescan indices that were upgraded
@@ -366,7 +369,7 @@ export function formatFileWithHashes(
         const newLen = Math.min(hashLens[idx] + 1, 8);
         if (newLen === hashLens[idx]) continue; // already at max length
         hashLens[idx] = newLen;
-        hashes[idx] = computeLineHash(idx, lines[idx], newLen);
+        hashes[idx] = computeLineHash(idx + fileStartLine - 1, lines[idx], newLen);
         nextDirty.add(idx);
         hasCollisions = true;
       }
@@ -388,11 +391,11 @@ export function formatFileWithHashes(
   }
 
   const annotatedLines = lines.map((line, idx) => {
-    return `${effectivePrefix}${idx + 1}:${hashes[idx]}|${line}`;
+    return `${effectivePrefix}${idx + fileStartLine}:${hashes[idx]}|${line}`;
   });
 
   if (includeFileRev) {
-    const rev = computeFileRev(content);
+    const rev = fileRevHash ?? computeFileRev(content);
     annotatedLines.unshift(`${effectivePrefix}REV:${rev}`);
   }
 

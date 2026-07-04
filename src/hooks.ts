@@ -7,7 +7,7 @@
  *   before they are applied to the actual file.
  */
 
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { Hooks } from "@opencode-ai/plugin";
@@ -16,6 +16,7 @@ import {
   getByteLength,
   type HashlineCache,
   type HashlineConfig,
+  computeFileRev,
   resolveConfig,
   shouldExclude,
   stripHashes,
@@ -137,6 +138,95 @@ export function isFileReadTool(toolName: string, args?: Record<string, unknown>)
 }
 
 /**
+ * Extract the file content body from an opencode read tool output.
+ *
+ * opencode's read tool wraps file content in <path>/<type>/<content> tags
+ * and prefixes each line with "N: " (line number). This function extracts
+ * the raw file content (without line-number prefixes) and the starting line
+ * number, so hashes can be computed against the actual file content —
+ * making them compatible with hashline_edit.
+ *
+ * @param output - the raw output string from opencode's read tool
+ * @returns parsed components, or null if the output is not in opencode read format
+ */
+interface ReadOutputBody {
+  header: string;
+  fileContent: string;
+  footer: string;
+  startLine: number;
+}
+
+function extractContentBody(output: string): ReadOutputBody | null {
+  // Match the header: <path>...</path>\n<type>file</type>\n<content>\n
+  const headerMatch = output.match(/^<path>[\s\S]*?<\/path>\n<type>file<\/type>\n<content>\n/);
+  if (!headerMatch) return null;
+
+  const header = headerMatch[0];
+  const afterHeader = output.slice(header.length);
+
+  // Find </content> to locate the footer
+  const contentEndIdx = afterHeader.indexOf("</content>");
+  if (contentEndIdx === -1) return null;
+
+  // Split body (file lines + marker) from footer
+  const bodyWithMarker = afterHeader.slice(0, contentEndIdx);
+  const afterContent = afterHeader.slice(contentEndIdx);
+
+  // Split lines and separate file content lines from trailing marker lines.
+  // File content lines match "N: content" (e.g. "1: function foo() {").
+  // Trailing markers: empty lines, "(End of file ...)", "(Showing lines ...)",
+  // "(Output capped ...)".
+  const lines = bodyWithMarker.split("\n");
+
+  // Find the last file content line (lines matching ^\d+: )
+  let bodyEndIdx = lines.length;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^\d+: /.test(lines[i])) {
+      bodyEndIdx = i + 1;
+      break;
+    }
+  }
+
+  // Must have at least one file content line
+  if (bodyEndIdx === 0 || !/^\d+: /.test(lines[0])) return null;
+
+  const bodyLines = lines.slice(0, bodyEndIdx);
+  const markerLines = lines.slice(bodyEndIdx);
+  // Strip trailing empty strings from markerLines (artifact of bodyWithMarker
+  // ending with \n before </content>)
+  while (markerLines.length > 0 && markerLines[markerLines.length - 1] === "") {
+    markerLines.pop();
+  }
+
+  // Extract raw file content (strip "N: " prefixes) and capture startLine
+  const fileLines: string[] = [];
+  let startLine = 1;
+
+  for (let i = 0; i < bodyLines.length; i++) {
+    const match = bodyLines[i].match(/^(\d+): ([\s\S]*)$/);
+    if (match) {
+      const lineNum = parseInt(match[1], 10);
+      if (i === 0) startLine = lineNum;
+      fileLines.push(match[2]);
+    } else {
+      // Non-content line within body — preserve as-is
+      fileLines.push(bodyLines[i]);
+    }
+  }
+
+  // Reconstruct footer: marker lines + </content> + trailing (e.g. system-reminder)
+  const marker = markerLines.length > 0 ? "\n" + markerLines.join("\n") : "";
+  const footer = marker + "\n" + afterContent;
+
+  return {
+    header,
+    fileContent: fileLines.join("\n"),
+    footer,
+    startLine,
+  };
+}
+
+/**
  * Create the `tool.execute.after` hook.
  *
  * When a file-read tool completes, this hook annotates the output
@@ -208,8 +298,35 @@ export function createFileReadAfterHook(
       }
     }
 
-    // Annotate the file content with hashline prefixes
-    const annotated = formatFileWithHashes(content, hashLen || undefined, prefix, resolved.fileRev);
+    // Annotate the file content with hashline prefixes.
+    // For opencode's read tool output, extract the file content body (stripped
+    // of <path>/<type>/<content> tags and "N: " line-number prefixes) so that
+    // hashes are computed against the actual file content — making them
+    // compatible with hashline_edit. Falls back to whole-output annotation
+    // for non-opencode read tools.
+    const body = extractContentBody(content);
+    let annotated: string;
+    if (body) {
+      // Read the actual file to compute an accurate fileRev that matches
+      // what hashline_edit will compute. extractContentBody strips read-tool
+      // line-number prefixes but loses trailing newline information, which
+      // would cause a FILE_REV_MISMATCH.
+      let fileRevHash: string | undefined;
+      if (typeof filePath === "string" && resolved.fileRev) {
+        try {
+          const actualContent = readFileSync(filePath, "utf8");
+          fileRevHash = computeFileRev(actualContent);
+        } catch {
+          // Fall back to extracted content's fileRev
+        }
+      }
+      const annotatedContent = formatFileWithHashes(
+        body.fileContent, hashLen || undefined, prefix, resolved.fileRev, body.startLine, fileRevHash,
+      );
+      annotated = body.header + annotatedContent + body.footer;
+    } else {
+      annotated = formatFileWithHashes(content, hashLen || undefined, prefix, resolved.fileRev);
+    }
     output.output = annotated;
     debug(
       "annotated",

@@ -2,7 +2,7 @@
   "name": "opencode-hashline",
   "version": "1.4.1",
   "description": "Hashline plugin for OpenCode — content-addressable line hashing for precise AI code editing",
-  "main": "dist/opencode-hashline.cjs",
+  "main": "dist/opencode-hashline.js",
   "module": "dist/opencode-hashline.js",
   "types": "dist/opencode-hashline.d.ts",
   "type": "module",
