@@ -1,5 +1,5 @@
 {
-  "name": "opencode-hashline",
+  "name": "@flydut/opencode-hashline",
   "version": "1.4.1",
   "description": "Hashline plugin for OpenCode — content-addressable line hashing for precise AI code editing",
   "main": "dist/opencode-hashline.js",
@@ -62,7 +62,7 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8",
-    "zod": "~4.4.3"
+    "zod": "4.1.8"
   },
   "dependencies": {},
   "lint-staged": {
