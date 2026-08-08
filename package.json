@@ -1,6 +1,6 @@
 {
   "name": "@flydut/opencode-hashline",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Hashline plugin for OpenCode — content-addressable line hashing for precise AI code editing",
   "main": "dist/opencode-hashline.js",
   "module": "dist/opencode-hashline.js",

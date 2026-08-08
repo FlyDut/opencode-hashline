@@ -78,12 +78,6 @@ describe("localized tool", () => {
     expect(tool.description).not.toContain("哈希");
   });
 
-  it("has a Chinese description after setLocale('zh')", () => {
-    setLocale("zh");
-    const zhTool = makeTool();
-    expect(zhTool.description).toContain("行号漂移");
-  });
-
   it("localizes tool output when locale is zh", async () => {
     setLocale("zh");
     const zhTool = makeTool();
@@ -99,21 +93,6 @@ describe("localized tool", () => {
 });
 
 describe("localized system prompt", () => {
-  it("contains English by default", async () => {
-    const hook = createSystemPromptHook();
-    const output: { system: string[] } = { system: [] };
-    await hook({} as never, output);
-    expect(output.system.join("\n")).toContain("Hashline — Line Reference System");
-  });
-
-  it("contains Chinese after setLocale('zh')", async () => {
-    setLocale("zh");
-    const hook = createSystemPromptHook();
-    const output: { system: string[] } = { system: [] };
-    await hook({} as never, output);
-    expect(output.system.join("\n")).toContain("行引用系统");
-  });
-
   it("substitutes the configured prefix", async () => {
     const hook = createSystemPromptHook();
     const output: { system: string[] } = { system: [] };

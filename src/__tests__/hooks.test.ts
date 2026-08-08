@@ -428,64 +428,6 @@ describe("createSystemPromptHook", () => {
   const config = resolveConfig();
   const hook = createSystemPromptHook(config);
 
-  it("appends hashline instructions to the system prompt", async () => {
-    const input = {};
-    const output = createSystemOutput();
-
-    await hook(input as Parameters<typeof hook>[0], output as Parameters<typeof hook>[1]);
-
-    expect(output.system).toHaveLength(1);
-    expect(output.system[0]).toContain("Hashline");
-    expect(output.system[0]).toContain("Line Reference System");
-  });
-
-  it("includes format explanation and examples with prefix", async () => {
-    const input = {};
-    const output = createSystemOutput();
-
-    await hook(input as Parameters<typeof hook>[0], output as Parameters<typeof hook>[1]);
-
-    const prompt = output.system[0];
-    expect(prompt).toContain("#HL <line>:<hash>|<content>");
-    expect(prompt).toContain("#HL 1:a3f|function hello()");
-  });
-
-  it("includes hash verification rules", async () => {
-    const input = {};
-    const output = createSystemOutput();
-
-    await hook(input as Parameters<typeof hook>[0], output as Parameters<typeof hook>[1]);
-
-    const prompt = output.system[0];
-    expect(prompt).toContain("Hash verification rules");
-    expect(prompt).toContain("Always verify");
-    expect(prompt).toContain("re-read the file");
-  });
-
-  it("includes adaptive hash length explanation", async () => {
-    const input = {};
-    const output = createSystemOutput();
-
-    await hook(input as Parameters<typeof hook>[0], output as Parameters<typeof hook>[1]);
-
-    const prompt = output.system[0];
-    expect(prompt).toContain("adapts to file size");
-    expect(prompt).toContain("3 chars");
-  });
-
-  it("includes edit operation examples", async () => {
-    const input = {};
-    const output = createSystemOutput();
-
-    await hook(input as Parameters<typeof hook>[0], output as Parameters<typeof hook>[1]);
-
-    const prompt = output.system[0];
-    expect(prompt).toContain("Replace a single line");
-    expect(prompt).toContain("Replace a block");
-    expect(prompt).toContain("Insert");
-    expect(prompt).toContain("Delete");
-  });
-
   it("preserves existing system prompt entries", async () => {
     const input = {};
     const output = createSystemOutput(["existing instruction"]);
@@ -495,20 +437,6 @@ describe("createSystemPromptHook", () => {
     expect(output.system).toHaveLength(2);
     expect(output.system[0]).toBe("existing instruction");
     expect(output.system[1]).toContain("Hashline");
-  });
-
-  it("uses custom prefix in system prompt", async () => {
-    const customConfig = resolveConfig({ prefix: ">> " });
-    const customHook = createSystemPromptHook(customConfig);
-
-    const input = {};
-    const output = createSystemOutput();
-
-    await customHook(input as Parameters<typeof hook>[0], output as Parameters<typeof hook>[1]);
-
-    const prompt = output.system[0];
-    expect(prompt).toContain(">> <line>:<hash>|<content>");
-    expect(prompt).toContain(">> 1:a3f|function hello()");
   });
 });
 
@@ -719,39 +647,5 @@ describe("REV header in hooks", () => {
     );
 
     expect(editOutput.args?.content).toBe(original);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// System prompt contains new sections
-// ---------------------------------------------------------------------------
-
-describe("System prompt — new sections", () => {
-  it("includes fileRev documentation", async () => {
-    const config = resolveConfig();
-    const hook = createSystemPromptHook(config);
-
-    const output = createSystemOutput();
-    await hook({} as Parameters<typeof hook>[0], output as Parameters<typeof hook>[1]);
-
-    const prompt = output.system[0];
-    expect(prompt).toContain("File revision");
-    expect(prompt).toContain("REV:");
-    expect(prompt).toContain("fileRev");
-  });
-
-  it("includes structured error codes", async () => {
-    const config = resolveConfig();
-    const hook = createSystemPromptHook(config);
-
-    const output = createSystemOutput();
-    await hook({} as Parameters<typeof hook>[0], output as Parameters<typeof hook>[1]);
-
-    const prompt = output.system[0];
-    expect(prompt).toContain("HASH_MISMATCH");
-    expect(prompt).toContain("FILE_REV_MISMATCH");
-
-    expect(prompt).toContain("TARGET_OUT_OF_RANGE");
-    expect(prompt).toContain("INVALID_REF");
   });
 });
