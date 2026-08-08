@@ -4,17 +4,17 @@
 
 **Контентно-адресуемое хеширование строк для точного редактирования кода с помощью AI**
 
-[![CI](https://github.com/izzzzzi/opencode-hashline/actions/workflows/ci.yml/badge.svg)](https://github.com/izzzzzi/opencode-hashline/actions/workflows/ci.yml)
-[![Release](https://github.com/izzzzzi/opencode-hashline/actions/workflows/release.yml/badge.svg)](https://github.com/izzzzzi/opencode-hashline/actions/workflows/release.yml)
-[![npm version](https://img.shields.io/npm/v/opencode-hashline.svg?style=flat&colorA=18181B&colorB=28CF8D)](https://www.npmjs.com/package/opencode-hashline)
-[![npm downloads](https://img.shields.io/npm/dm/opencode-hashline.svg?style=flat&colorA=18181B&colorB=28CF8D)](https://www.npmjs.com/package/opencode-hashline)
-[![GitHub release](https://img.shields.io/github/v/release/izzzzzi/opencode-hashline?style=flat&colorA=18181B&colorB=28CF8D)](https://github.com/izzzzzi/opencode-hashline/releases)
+[![CI](https://github.com/FlyDut/opencode-hashline/actions/workflows/ci.yml/badge.svg)](https://github.com/FlyDut/opencode-hashline/actions/workflows/ci.yml)
+[![Release](https://github.com/FlyDut/opencode-hashline/actions/workflows/release.yml/badge.svg)](https://github.com/FlyDut/opencode-hashline/actions/workflows/release.yml)
+[![npm version](https://img.shields.io/npm/v/@flydut%2fopencode-hashline.svg?style=flat&colorA=18181B&colorB=28CF8D)](https://www.npmjs.com/package/@flydut/opencode-hashline)
+[![npm downloads](https://img.shields.io/npm/dm/@flydut%2fopencode-hashline.svg?style=flat&colorA=18181B&colorB=28CF8D)](https://www.npmjs.com/package/@flydut/opencode-hashline)
+[![GitHub release](https://img.shields.io/github/v/release/FlyDut/opencode-hashline?style=flat&colorA=18181B&colorB=28CF8D)](https://github.com/FlyDut/opencode-hashline/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat&colorA=18181B&colorB=28CF8D)](LICENSE)
 [![semantic-release](https://img.shields.io/badge/semantic--release-auto-e10079?style=flat&colorA=18181B)](https://github.com/semantic-release/semantic-release)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?style=flat&colorA=18181B&colorB=3178C6)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-ESM-green?style=flat&colorA=18181B&colorB=339933)](https://nodejs.org/)
 
-**🇷🇺 Русский** | [🇬🇧 English](README.en.md)
+**🇷🇺 Русский** | [🇬🇧 English](README.en.md) | [🇨🇳 简体中文](README.md)
 
 <br />
 
@@ -88,7 +88,7 @@ const hl = createHashline({ prefix: false });
 Проверка того, что строка не изменилась с момента чтения — защита от race conditions:
 
 ```typescript
-import { verifyHash } from "opencode-hashline/utils";
+import { verifyHash } from "@flydut/opencode-hashline/utils";
 
 const result = verifyHash(2, "f1c", currentContent);
 if (!result.valid) {
@@ -107,7 +107,7 @@ if (!result.valid) {
 Резолвинг и замена диапазонов строк по хеш-ссылкам:
 
 ```typescript
-import { resolveRange, replaceRange } from "opencode-hashline/utils";
+import { resolveRange, replaceRange } from "@flydut/opencode-hashline/utils";
 
 // Получить строки между двумя хеш-ссылками
 const range = resolveRange("1:a3f", "3:0e7", content);
@@ -125,7 +125,7 @@ const newContent = replaceRange(
 Создание кастомных экземпляров Hashline с определёнными настройками:
 
 ```typescript
-import { createHashline } from "opencode-hashline/utils";
+import { createHashline } from "@flydut/opencode-hashline/utils";
 
 const hl = createHashline({
   exclude: ["**/node_modules/**", "**/*.min.js"],
@@ -159,7 +159,7 @@ const isExcluded = hl.shouldExclude("node_modules/foo.js"); // true
 ## 📦 Установка
 
 ```bash
-npm install opencode-hashline
+npm install @flydut/opencode-hashline
 ```
 
 ---
@@ -171,7 +171,7 @@ npm install opencode-hashline
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-hashline"]
+  "plugin": ["@flydut/opencode-hashline"]
 }
 ```
 
@@ -238,7 +238,7 @@ npm install opencode-hashline
 
 ## 🔌 Программный API
 
-Основные утилиты экспортируются из субпути `opencode-hashline/utils` (чтобы избежать конфликтов с загрузчиком плагинов OpenCode, который вызывает каждый экспорт как функцию Plugin):
+Основные утилиты экспортируются из субпути `@flydut/opencode-hashline/utils` (чтобы избежать конфликтов с загрузчиком плагинов OpenCode, который вызывает каждый экспорт как функцию Plugin):
 
 ```typescript
 import {
@@ -259,7 +259,7 @@ import {
   matchesGlob,
   resolveConfig,
   DEFAULT_PREFIX,
-} from "opencode-hashline/utils";
+} from "@flydut/opencode-hashline/utils";
 ```
 
 ### Основные функции

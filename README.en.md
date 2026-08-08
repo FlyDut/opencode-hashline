@@ -6,17 +6,17 @@
 
 **Content-addressable line hashing for precise AI code editing**
 
-[![CI](https://github.com/izzzzzi/opencode-hashline/actions/workflows/ci.yml/badge.svg)](https://github.com/izzzzzi/opencode-hashline/actions/workflows/ci.yml)
-[![Release](https://github.com/izzzzzi/opencode-hashline/actions/workflows/release.yml/badge.svg)](https://github.com/izzzzzi/opencode-hashline/actions/workflows/release.yml)
-[![npm version](https://img.shields.io/npm/v/opencode-hashline.svg?style=flat&colorA=18181B&colorB=28CF8D)](https://www.npmjs.com/package/opencode-hashline)
-[![npm downloads](https://img.shields.io/npm/dm/opencode-hashline.svg?style=flat&colorA=18181B&colorB=28CF8D)](https://www.npmjs.com/package/opencode-hashline)
-[![GitHub release](https://img.shields.io/github/v/release/izzzzzi/opencode-hashline?style=flat&colorA=18181B&colorB=28CF8D)](https://github.com/izzzzzi/opencode-hashline/releases)
+[![CI](https://github.com/FlyDut/opencode-hashline/actions/workflows/ci.yml/badge.svg)](https://github.com/FlyDut/opencode-hashline/actions/workflows/ci.yml)
+[![Release](https://github.com/FlyDut/opencode-hashline/actions/workflows/release.yml/badge.svg)](https://github.com/FlyDut/opencode-hashline/actions/workflows/release.yml)
+[![npm version](https://img.shields.io/npm/v/@flydut%2fopencode-hashline.svg?style=flat&colorA=18181B&colorB=28CF8D)](https://www.npmjs.com/package/@flydut/opencode-hashline)
+[![npm downloads](https://img.shields.io/npm/dm/@flydut%2fopencode-hashline.svg?style=flat&colorA=18181B&colorB=28CF8D)](https://www.npmjs.com/package/@flydut/opencode-hashline)
+[![GitHub release](https://img.shields.io/github/v/release/FlyDut/opencode-hashline?style=flat&colorA=18181B&colorB=28CF8D)](https://github.com/FlyDut/opencode-hashline/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat&colorA=18181B&colorB=28CF8D)](LICENSE)
 [![semantic-release](https://img.shields.io/badge/semantic--release-auto-e10079?style=flat&colorA=18181B)](https://github.com/semantic-release/semantic-release)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue?style=flat&colorA=18181B&colorB=3178C6)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-ESM-green?style=flat&colorA=18181B&colorB=339933)](https://nodejs.org/)
 
-[🇷🇺 Русский](README.md) | **🇬🇧 English**
+[🇷🇺 Русский](README.ru.md) | **🇬🇧 English** | [🇨🇳 简体中文](README.md)
 
 <br />
 
@@ -95,7 +95,7 @@ Built-in LRU cache (`filePath → annotatedContent`) with configurable size (def
 Verify that a line hasn't changed since it was read — protects against race conditions:
 
 ```typescript
-import { verifyHash } from "opencode-hashline/utils";
+import { verifyHash } from "@flydut/opencode-hashline/utils";
 
 const result = verifyHash(2, "f1c", currentContent);
 if (!result.valid) {
@@ -134,6 +134,44 @@ const result = applyHashEdit(
 );
 ```
 
+### 🚀 Batch Edits
+
+The `hashline_edit` tool supports applying **multiple edits** in a single call via an `edits` array, without re-reading the file between edits:
+
+```json
+{
+  "path": "src/app.ts",
+  "edits": [
+    { "operation": "replace", "startRef": "1:a3f", "endRef": "3:0e7", "replacement": "function goodbye() {" },
+    { "operation": "delete",  "startRef": "12:f4a" },
+    { "operation": "insert",  "startRef": "8:c2d", "replacement": "  return 'farewell';" }
+  ]
+}
+```
+
+Internally the tool **sorts edits by start line, descending (bottom-to-top)**, and applies them sequentially, so line numbers never drift — later edits remain valid even after earlier edits add/remove lines. This is far more reliable for the AI: it can make all changes to a file in a single round-trip while avoiding the overhead of re-reading between edits.
+
+- Each edit entry supports `operation` / `startRef` / `endRef` / `replacement`.
+- `hashline_edit` accepts **only** the `edits` array for batch editing; for a single edit, pass an array containing just one entry.
+- The underlying core function is `applyHashEdits(edits, content, hashLen?)`, also available for programmatic use.
+
+### 🌐 Internationalization (i18n)
+
+All user-facing strings are available in both English and Chinese: the system prompt, tool description and arguments, tool output, and error/diagnostic messages. Switch languages via the `locale` config option:
+
+| Language | Value |
+|----------|-------|
+| 简体中文 | `"zh"` |
+| English | `"en"` (default) |
+
+```json
+{
+  "locale": "zh"
+}
+```
+
+> **Note:** Error codes themselves (e.g. `FILE_REV_MISMATCH`) and the `operation` enum in tool output remain English for machine-readability and cross-language consistency.
+
 ### 🏷️ Structured Errors
 
 All hashline errors are instances of `HashlineError` with error codes, diagnostics, and hints:
@@ -157,7 +195,7 @@ Hash computation uses `trimEnd()` (not `trim()`), so changes to leading whitespa
 Resolve and replace ranges of lines by hash references:
 
 ```typescript
-import { resolveRange, replaceRange } from "opencode-hashline/utils";
+import { resolveRange, replaceRange } from "@flydut/opencode-hashline/utils";
 
 // Get lines between two hash references
 const range = resolveRange("1:a3f", "3:0e7", content);
@@ -175,7 +213,7 @@ const newContent = replaceRange(
 Create custom Hashline instances with specific settings:
 
 ```typescript
-import { createHashline } from "opencode-hashline/utils";
+import { createHashline } from "@flydut/opencode-hashline/utils";
 
 const hl = createHashline({
   exclude: ["**/node_modules/**", "**/*.min.js"],
@@ -199,8 +237,10 @@ const isExcluded = hl.shouldExclude("node_modules/foo.js"); // true
 | `hashLength` | `number \| undefined` | `undefined` (adaptive) | Force specific hash length |
 | `cacheSize` | `number` | `100` | Max files in LRU cache |
 | `prefix` | `string \| false` | `"#HL "` | Line prefix (`false` to disable) |
+| `debug` | `boolean` | `false` | Enable debug logging to `~/.config/opencode/hashline-debug.log` |
 | `fileRev` | `boolean` | `true` | Include file revision hash (`#HL REV:...`) in annotations |
 | `safeReapply` | `boolean` | `false` | Auto-relocate moved lines by content hash |
+| `locale` | `string` | `"en"` | Display language for user-facing messages (`"en"` or `"zh"`) |
 
 Default exclude patterns cover: lock files, `node_modules`, minified files, binary files (images, fonts, archives, etc.).
 
@@ -209,7 +249,7 @@ Default exclude patterns cover: lock files, `node_modules`, minified files, bina
 ## 📦 Installation
 
 ```bash
-npm install opencode-hashline
+npm install @flydut/opencode-hashline
 ```
 
 ---
@@ -221,7 +261,7 @@ Add the plugin to your `opencode.json`:
 ```json
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugin": ["opencode-hashline"]
+  "plugin": ["@flydut/opencode-hashline"]
 }
 ```
 
@@ -258,7 +298,7 @@ That's it! The plugin automatically:
 | 5 | 💾 **Caches results** | Repeated reads of the same file return cached annotations |
 | 6 | 🔍 **Filters by tool** | Only file-reading tools (e.g. `read_file`, `cat`, `view`) get annotations; other tools are left untouched |
 | 7 | ⚙️ **Respects config** | Excluded files and files exceeding `maxFileSize` are skipped |
-| 8 | 🧩 **Registers `hashline_edit` tool** | Applies replace/delete/insert by hash references, without exact `old_string` matching |
+| 8 | 🧩 **Registers `hashline_edit` tool** | Applies replace/delete/insert by hash references, without exact `old_string` matching; performs batched edits via the `edits` array |
 
 ---
 
@@ -303,7 +343,7 @@ The plugin needs to determine which tools are "file-read" tools (to annotate the
 The `isFileReadTool()` function is exported for testing and advanced usage:
 
 ```typescript
-import { isFileReadTool } from "opencode-hashline/utils";
+import { isFileReadTool } from "@flydut/opencode-hashline/utils";
 
 isFileReadTool("read_file");                          // true
 isFileReadTool("mcp.read");                           // true
@@ -313,7 +353,7 @@ isFileReadTool("file_write", { path: "app.ts" });     // false (write indicator)
 
 ### Programmatic API
 
-The core utilities are exported from the `opencode-hashline/utils` subpath (to avoid conflicts with OpenCode's plugin loader, which calls every export as a Plugin function):
+The core utilities are exported from the `@flydut/opencode-hashline/utils` subpath (to avoid conflicts with OpenCode's plugin loader, which calls every export as a Plugin function):
 
 ```typescript
 import {
@@ -328,13 +368,14 @@ import {
   resolveRange,
   replaceRange,
   applyHashEdit,
+  applyHashEdits,
   HashlineCache,
   createHashline,
   shouldExclude,
   matchesGlob,
   resolveConfig,
   DEFAULT_PREFIX,
-} from "opencode-hashline/utils";
+} from "@flydut/opencode-hashline/utils";
 ```
 
 ### Core Functions
@@ -390,6 +431,15 @@ const edited = applyHashEdit(
   { operation: "replace", startRef: "1:a3f", endRef: "3:0e7", replacement: "new content" },
   fileContent
 ).content;
+
+// Batch edits: applied bottom-to-top automatically to avoid line-number drift
+const { content, edits } = applyHashEdits(
+  [
+    { operation: "replace", startRef: "1:a3f", endRef: "3:0e7", replacement: "function goodbye() {" },
+    { operation: "delete",  startRef: "12:f4a" },
+  ],
+  fileContent
+);
 ```
 
 ### Utilities
