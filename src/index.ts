@@ -31,6 +31,7 @@ import {
   createSystemPromptHook,
   setDebug,
 } from "./hooks";
+import { resolveLocale, setLocale } from "./i18n";
 
 const CONFIG_FILENAME = "opencode-hashline.json";
 
@@ -102,6 +103,9 @@ export function sanitizeConfig(raw: unknown): HashlineConfig {
   }
   if (typeof r.fileRev === "boolean") {
     result.fileRev = r.fileRev;
+  }
+  if (typeof r.locale === "string" && /^[a-z]{2}(-[A-Za-z]{2})?$/i.test(r.locale)) {
+    result.locale = r.locale;
   }
 
   return result;
@@ -176,6 +180,9 @@ export function createHashlinePlugin(userConfig?: HashlineConfig): Plugin {
     const fileConfig = loadConfig(projectDir, userConfig);
     const config = resolveConfig(fileConfig);
     const cache = new HashlineCache(config.cacheSize);
+
+    // Apply locale globally (module state) so tools/hooks/errors localize.
+    setLocale(resolveLocale(config.locale));
 
     // Enable debug logging only if config.debug is true
     setDebug(config.debug);

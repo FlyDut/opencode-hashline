@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyHashEdit,
+  applyHashEdits,
   buildHashMap,
   computeFileRev,
   computeLineHash,
@@ -733,6 +734,74 @@ describe("applyHashEdit", () => {
         content,
       ),
     ).toThrow("Start reference invalid");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyHashEdits
+// ---------------------------------------------------------------------------
+
+describe("applyHashEdits", () => {
+  const batchContent = "a\nb\nc\nd\ne";
+
+  it("applies multiple edits regardless of input order (top-to-bottom inputs)", () => {
+    // Edits are supplied in ascending (top-to-bottom) order, but must be
+    // applied bottom-to-top internally so references don't drift.
+    const h2 = computeLineHash(1, "b");
+    const h4 = computeLineHash(3, "d");
+
+    const result = applyHashEdits(
+      [
+        { operation: "replace", startRef: `2:${h2}`, replacement: "B2" },
+        { operation: "replace", startRef: `4:${h4}`, replacement: "D4" },
+      ],
+      batchContent,
+    );
+
+    expect(result.content).toBe("a\nB2\nc\nD4\ne");
+    // Results are reported in the original input order.
+    expect(result.edits.map((e) => e.startLine)).toEqual([2, 4]);
+  });
+
+  it("handles insert and delete mixed with replace", () => {
+    const h1 = computeLineHash(0, "a");
+    const h3 = computeLineHash(2, "c");
+    const h5 = computeLineHash(4, "e");
+
+    const result = applyHashEdits(
+      [
+        { operation: "insert_before", startRef: `1:${h1}`, replacement: "0" },
+        { operation: "delete", startRef: `3:${h3}` },
+        { operation: "replace", startRef: `5:${h5}`, replacement: "E5" },
+      ],
+      batchContent,
+    );
+
+    expect(result.content).toBe("0\na\nb\nd\nE5");
+  });
+
+  it("returns content unchanged for an empty edit list", () => {
+    const result = applyHashEdits([], batchContent);
+    expect(result.content).toBe(batchContent);
+    expect(result.edits).toEqual([]);
+  });
+
+  it("verifies fileRev once against original content", () => {
+    const h2 = computeLineHash(1, "b");
+    const rev = computeFileRev(batchContent);
+    expect(() =>
+      applyHashEdits(
+        [{ operation: "replace", startRef: `2:${h2}`, replacement: "x", fileRev: rev }],
+        batchContent,
+      ),
+    ).not.toThrow();
+
+    expect(() =>
+      applyHashEdits(
+        [{ operation: "replace", startRef: `2:${h2}`, replacement: "x", fileRev: "00000000" }],
+        batchContent,
+      ),
+    ).toThrow("File revision mismatch");
   });
 });
 

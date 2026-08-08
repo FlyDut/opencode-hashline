@@ -32,15 +32,44 @@ describe("createHashlineEditTool", () => {
     const output = await toolDef.execute(
       {
         path: "test.ts",
-        operation: "replace",
-        startRef: `2:${h2}`,
-        replacement: "updated line",
+        edits: [{ operation: "replace", startRef: `2:${h2}`, replacement: "updated line" }],
       },
       context as Parameters<typeof toolDef.execute>[1],
     );
 
-    expect(output).toContain("Applied replace");
+    expect(output).toContain("Applied 1 edit(s)");
+    expect(output).toContain("1. replace");
     expect(readFileSync(filePath, "utf-8")).toBe("line one\nupdated line\nline three");
+    expect(context.metadata).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies a batch of edits in a single call without line drift", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hashline-tool-test-"));
+    const filePath = join(dir, "batch.ts");
+    const original = "line one\nline two\nline three\nline four\nline five";
+    writeFileSync(filePath, original, "utf-8");
+
+    const h2 = computeLineHash(1, "line two");
+    const h4 = computeLineHash(3, "line four");
+    const toolDef = createHashlineEditTool(resolveConfig());
+    const context = makeContext(dir);
+
+    // Edits supplied top-to-bottom must still apply cleanly.
+    const output = await toolDef.execute(
+      {
+        path: "batch.ts",
+        edits: [
+          { operation: "replace", startRef: `2:${h2}`, replacement: "updated two" },
+          { operation: "replace", startRef: `4:${h4}`, replacement: "updated four" },
+        ],
+      },
+      context as Parameters<typeof toolDef.execute>[1],
+    );
+
+    expect(output).toContain("Applied 2 edit(s)");
+    expect(readFileSync(filePath, "utf-8")).toBe(
+      "line one\nupdated two\nline three\nupdated four\nline five",
+    );
     expect(context.metadata).toHaveBeenCalledTimes(1);
   });
 
@@ -61,9 +90,7 @@ describe("createHashlineEditTool", () => {
     await toolDef.execute(
       {
         path: "cache.ts",
-        operation: "replace",
-        startRef: `2:${h2}`,
-        replacement: "x",
+        edits: [{ operation: "replace", startRef: `2:${h2}`, replacement: "x" }],
       },
       context as Parameters<typeof toolDef.execute>[1],
     );
@@ -83,9 +110,7 @@ describe("createHashlineEditTool", () => {
       toolDef.execute(
         {
           path: "stale.ts",
-          operation: "replace",
-          startRef: "2:aaa",
-          replacement: "x",
+          edits: [{ operation: "replace", startRef: "2:aaa", replacement: "x" }],
         },
         context as Parameters<typeof toolDef.execute>[1],
       ),
@@ -106,15 +131,13 @@ describe("createHashlineEditTool", () => {
     const output = await toolDef.execute(
       {
         path: "rev.ts",
-        operation: "replace",
-        startRef: `2:${h2}`,
-        replacement: "updated",
+        edits: [{ operation: "replace", startRef: `2:${h2}`, replacement: "updated" }],
         fileRev: rev,
       },
       context as Parameters<typeof toolDef.execute>[1],
     );
 
-    expect(output).toContain("Applied replace");
+    expect(output).toContain("1. replace");
     expect(readFileSync(filePath, "utf-8")).toBe("line one\nupdated\nline three");
   });
 
@@ -131,9 +154,7 @@ describe("createHashlineEditTool", () => {
       toolDef.execute(
         {
           path: "rev-fail.ts",
-          operation: "replace",
-          startRef: `2:${h2}`,
-          replacement: "x",
+          edits: [{ operation: "replace", startRef: `2:${h2}`, replacement: "x" }],
           fileRev: "00000000",
         },
         context as Parameters<typeof toolDef.execute>[1],
@@ -153,9 +174,7 @@ describe("createHashlineEditTool", () => {
       await toolDef.execute(
         {
           path: "diag.ts",
-          operation: "replace",
-          startRef: "2:aaa",
-          replacement: "x",
+          edits: [{ operation: "replace", startRef: "2:aaa", replacement: "x" }],
         },
         context as Parameters<typeof toolDef.execute>[1],
       );
@@ -176,9 +195,7 @@ describe("createHashlineEditTool", () => {
       toolDef.execute(
         {
           path: "/etc/passwd",
-          operation: "replace",
-          startRef: "1:abc",
-          replacement: "x",
+          edits: [{ operation: "replace", startRef: "1:abc", replacement: "x" }],
         },
         context as Parameters<typeof toolDef.execute>[1],
       ),
@@ -197,9 +214,7 @@ describe("createHashlineEditTool", () => {
       toolDef.execute(
         {
           path: "../../../etc/passwd",
-          operation: "replace",
-          startRef: "1:abc",
-          replacement: "x",
+          edits: [{ operation: "replace", startRef: "1:abc", replacement: "x" }],
         },
         context as Parameters<typeof toolDef.execute>[1],
       ),

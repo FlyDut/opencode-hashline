@@ -13,6 +13,16 @@
  */
 
 import { matchesGlob as pathMatchesGlob } from "node:path";
+import { t } from "./i18n";
+
+/** Build a localized diagnostic hint for the "content may have moved" case. */
+function movedHint(candidates?: CandidateLine[]): string {
+  if (candidates && candidates.length > 0) {
+    const list = candidates.map((c) => t("hint.candidate", { line: c.lineNumber })).join(", ");
+    return t("hint.moved", { candidates: list });
+  }
+  return t("hint.reread");
+}
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -40,6 +50,8 @@ export interface HashlineConfig {
   debug?: boolean;
   /** Include file revision hash in annotations (default: true) */
   fileRev?: boolean;
+  /** Display language for user-facing messages: "en" or "zh" (default: "en") */
+  locale?: string;
 }
 
 /** Default exclude patterns */
@@ -67,6 +79,7 @@ export const DEFAULT_CONFIG: Required<HashlineConfig> = {
   prefix: DEFAULT_PREFIX,
   debug: false,
   fileRev: true,
+  locale: "en",
 };
 
 /**
@@ -97,6 +110,7 @@ export function resolveConfig(
     prefix: merged.prefix !== undefined ? merged.prefix : DEFAULT_CONFIG.prefix,
     debug: merged.debug ?? DEFAULT_CONFIG.debug,
     fileRev: merged.fileRev ?? DEFAULT_CONFIG.fileRev,
+    locale: merged.locale ?? DEFAULT_CONFIG.locale,
   };
 }
 
@@ -150,24 +164,24 @@ export class HashlineError extends Error {
   toDiagnostic(): string {
     const parts: string[] = [`[${this.code}] ${this.message}`];
     if (this.filePath) {
-      parts.push(`  File: ${this.filePath}`);
+      parts.push(`  ${t("diag.file")} ${this.filePath}`);
     }
     if (this.lineNumber !== undefined) {
-      parts.push(`  Line: ${this.lineNumber}`);
+      parts.push(`  ${t("diag.line")} ${this.lineNumber}`);
     }
     if (this.expected !== undefined && this.actual !== undefined) {
-      parts.push(`  Expected hash: ${this.expected}`);
-      parts.push(`  Actual hash:   ${this.actual}`);
+      parts.push(`  ${t("diag.expectedHash")} ${this.expected}`);
+      parts.push(`  ${t("diag.actualHash")} ${this.actual}`);
     }
     if (this.candidates && this.candidates.length > 0) {
-      parts.push(`  Candidates (${this.candidates.length}):`);
+      parts.push(`  ${t("diag.candidates", { count: this.candidates.length })}`);
       for (const c of this.candidates) {
         const preview = c.content.length > 60 ? `${c.content.slice(0, 60)}...` : c.content;
-        parts.push(`    - line ${c.lineNumber}: ${preview}`);
+        parts.push(`    ${t("diag.candidateLine", { line: c.lineNumber, preview })}`);
       }
     }
     if (this.hint) {
-      parts.push(`  Hint: ${this.hint}`);
+      parts.push(`  ${t("diag.hint")} ${this.hint}`);
     }
     return parts.join("\n");
   }
@@ -265,10 +279,10 @@ export function verifyFileRev(expectedRev: string, currentContent: string): void
   if (actualRev !== expectedRev) {
     throw new HashlineError({
       code: "FILE_REV_MISMATCH",
-      message: `File revision mismatch: expected "${expectedRev}", got "${actualRev}". The file has changed since it was last read.`,
+      message: t("err.revMismatch", { expected: expectedRev, actual: actualRev }),
       expected: expectedRev,
       actual: actualRev,
-      hint: "Re-read the file to get fresh hash references and a new file revision.",
+      hint: t("hint.reread"),
     });
   }
 }
@@ -464,7 +478,7 @@ export function parseHashRef(ref: string): { line: number; hash: string } {
     const display = ref.length > 100 ? `${ref.slice(0, 100)}…` : ref;
     throw new HashlineError({
       code: "INVALID_REF",
-      message: `Invalid hash reference: "${display}". Expected format: "<line>:<2-8 char hex>"`,
+      message: t("err.invalidRef", { display }),
     });
   }
   return {
@@ -498,7 +512,7 @@ export function normalizeHashRef(ref: string): string {
   const display = ref.length > 100 ? `${ref.slice(0, 100)}…` : ref;
   throw new HashlineError({
     code: "INVALID_REF",
-    message: `Invalid hash reference: "${display}". Expected "<line>:<hash>" or an annotated line like "#HL <line>:<hash>|..."`,
+    message: t("err.invalidRef.annotated", { display }),
   });
 }
 
@@ -597,7 +611,7 @@ export function verifyHash(
     return {
       valid: false,
       code: "TARGET_OUT_OF_RANGE",
-      message: `Line ${lineNumber} is out of range (file has ${contentLines.length} lines)`,
+      message: t("err.targetOutOfRange", { line: lineNumber, count: contentLines.length }),
     };
   }
 
@@ -612,7 +626,11 @@ export function verifyHash(
       expected: hash,
       actual: actualHash,
       candidates,
-      message: `Hash mismatch at line ${lineNumber}: expected "${hash}", got "${actualHash}". The file may have changed since it was read.`,
+      message: t("err.hashMismatch", {
+        line: lineNumber,
+        expected: hash,
+        actual: actualHash,
+      }),
     };
   }
 
@@ -655,7 +673,7 @@ export function resolveRange(
   if (start.line > end.line) {
     throw new HashlineError({
       code: "INVALID_RANGE",
-      message: `Invalid range: start line ${start.line} is after end line ${end.line}`,
+      message: t("err.invalidRange", { start: start.line, end: end.line }),
     });
   }
 
@@ -667,15 +685,12 @@ export function resolveRange(
   if (!startVerify.valid) {
     throw new HashlineError({
       code: startVerify.code ?? "HASH_MISMATCH",
-      message: `Start reference invalid: ${startVerify.message}`,
+      message: t("err.startInvalid", { message: startVerify.message }),
       expected: startVerify.expected,
       actual: startVerify.actual,
       candidates: startVerify.candidates,
       lineNumber: start.line,
-      hint:
-        startVerify.candidates && startVerify.candidates.length > 0
-          ? `Content may have moved. Candidates: ${startVerify.candidates.map((c) => `line ${c.lineNumber}`).join(", ")}`
-          : "Re-read the file to get fresh hash references.",
+      hint: movedHint(startVerify.candidates),
     });
   }
 
@@ -683,15 +698,12 @@ export function resolveRange(
   if (!endVerify.valid) {
     throw new HashlineError({
       code: endVerify.code ?? "HASH_MISMATCH",
-      message: `End reference invalid: ${endVerify.message}`,
+      message: t("err.endInvalid", { message: endVerify.message }),
       expected: endVerify.expected,
       actual: endVerify.actual,
       candidates: endVerify.candidates,
       lineNumber: end.line,
-      hint:
-        endVerify.candidates && endVerify.candidates.length > 0
-          ? `Content may have moved. Candidates: ${endVerify.candidates.map((c) => `line ${c.lineNumber}`).join(", ")}`
-          : "Re-read the file to get fresh hash references.",
+      hint: movedHint(endVerify.candidates),
     });
   }
 
@@ -759,15 +771,12 @@ export function applyHashEdit(
   if (!startVerify.valid) {
     throw new HashlineError({
       code: startVerify.code ?? "HASH_MISMATCH",
-      message: `Start reference invalid: ${startVerify.message}`,
+      message: t("err.startInvalid", { message: startVerify.message }),
       expected: startVerify.expected,
       actual: startVerify.actual,
       candidates: startVerify.candidates,
       lineNumber: start.line,
-      hint:
-        startVerify.candidates && startVerify.candidates.length > 0
-          ? `Content may have moved. Candidates: ${startVerify.candidates.map((c) => `line ${c.lineNumber}`).join(", ")}`
-          : "Re-read the file to get fresh hash references.",
+      hint: movedHint(startVerify.candidates),
     });
   }
 
@@ -775,7 +784,7 @@ export function applyHashEdit(
     if (input.replacement === undefined) {
       throw new HashlineError({
         code: "MISSING_REPLACEMENT",
-        message: `Operation "${input.operation}" requires "replacement" content`,
+        message: t("err.missingReplacement", { operation: input.operation }),
       });
     }
 
@@ -800,7 +809,7 @@ export function applyHashEdit(
   if (start.line > end.line) {
     throw new HashlineError({
       code: "INVALID_RANGE",
-      message: `Invalid range: start line ${start.line} is after end line ${end.line}`,
+      message: t("err.invalidRange", { start: start.line, end: end.line }),
     });
   }
 
@@ -808,15 +817,12 @@ export function applyHashEdit(
   if (!endVerify.valid) {
     throw new HashlineError({
       code: endVerify.code ?? "HASH_MISMATCH",
-      message: `End reference invalid: ${endVerify.message}`,
+      message: t("err.endInvalid", { message: endVerify.message }),
       expected: endVerify.expected,
       actual: endVerify.actual,
       candidates: endVerify.candidates,
       lineNumber: end.line,
-      hint:
-        endVerify.candidates && endVerify.candidates.length > 0
-          ? `Content may have moved. Candidates: ${endVerify.candidates.map((c) => `line ${c.lineNumber}`).join(", ")}`
-          : "Re-read the file to get fresh hash references.",
+      hint: movedHint(endVerify.candidates),
     });
   }
 
@@ -824,7 +830,7 @@ export function applyHashEdit(
   if (replacement === undefined) {
     throw new HashlineError({
       code: "MISSING_REPLACEMENT",
-      message: `Operation "${input.operation}" requires "replacement" content`,
+      message: t("err.missingReplacement", { operation: input.operation }),
     });
   }
 
@@ -839,6 +845,65 @@ export function applyHashEdit(
     endLine: end.line,
     content: lineEnding === "\r\n" ? next.replace(/\n/g, "\r\n") : next,
   };
+}
+
+/**
+ * Result of applying a batch of hash-aware edits.
+ */
+export interface HashBatchResult {
+  /** Final file content after all edits applied. */
+  content: string;
+  /** Per-edit results, in the same order as the input edits array. */
+  edits: HashEditResult[];
+}
+
+/**
+ * Apply multiple hash-aware edits in a single pass.
+ *
+ * Edits are applied from bottom to top (descending start line) so that line
+ * references captured from the same original read remain valid: editing a
+ * higher line never shifts the lines targeted by a lower edit. This avoids the
+ * line-number drift that occurs when applying edits top-to-bottom one at a time.
+ *
+ * If any edit supplies a `fileRev`, the file revision is verified once against
+ * the original content before applying anything.
+ *
+ * @param edits - the edits to apply, in any order
+ * @param content - current raw file content
+ * @param hashLen - override hash length (0 or undefined = use hash.length from ref)
+ * @returns final content plus per-edit resolved ranges (in input order)
+ */
+export function applyHashEdits(
+  edits: HashEditInput[],
+  content: string,
+  hashLen?: number,
+): HashBatchResult {
+  if (edits.length === 0) {
+    return { content, edits: [] };
+  }
+
+  const rev = edits.find((e) => e.fileRev)?.fileRev;
+  if (rev) {
+    verifyFileRev(rev, content);
+  }
+
+  // Resolve each edit's start line and validate its ref early so we can sort
+  // for bottom-to-top application.
+  const resolved = edits.map((edit, i) => ({
+    i,
+    startLine: parseHashRef(normalizeHashRef(edit.startRef)).line,
+  }));
+  const order = [...resolved].sort((a, b) => b.startLine - a.startLine);
+
+  const applied = new Array<HashEditResult>(edits.length);
+  let current = content;
+  for (const { i } of order) {
+    const result = applyHashEdit(edits[i], current, hashLen);
+    current = result.content;
+    applied[i] = result;
+  }
+
+  return { content: current, edits: applied };
 }
 
 // ---------------------------------------------------------------------------

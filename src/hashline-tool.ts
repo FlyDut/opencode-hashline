@@ -3,55 +3,57 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import type { ToolContext } from "@opencode-ai/plugin";
 import { z } from "zod";
 import {
-  applyHashEdit,
+  applyHashEdits,
   getByteLength,
+  type HashEditInput,
   type HashEditOperation,
   type HashlineCache,
   type HashlineConfig,
   HashlineError,
 } from "./hashline";
+import { t } from "./i18n";
 
 /**
- * Hash-aware edit tool.
+ * Hash-aware batch edit tool.
  *
- * Applies edits by hash references (line+hash), avoiding fragile exact
- * old_string matching used by traditional str_replace flows.
+ * Applies one or more edits by hash references (line+hash) in a single call,
+ * avoiding fragile exact old_string matching. When multiple edits are supplied,
+ * they are applied from bottom to top (descending start line) inside the tool,
+ * so consecutive edits do not suffer from line-number drift and the file only
+ * needs to be read once.
  */
 export function createHashlineEditTool(config: Required<HashlineConfig>, cache?: HashlineCache) {
   return {
-    description:
-      "Edit files using hashline references. Resolves refs like 5:a3f or '#HL 5:a3f|...' and applies replace/delete/insert without old_string matching.",
+    description: t("tool.description"),
     args: {
-      path: z.string().describe("Path to the file (absolute or relative to project directory)"),
-      operation: z
-        .enum(["replace", "delete", "insert_before", "insert_after"])
-        .describe("Edit operation"),
-      startRef: z
-        .string()
-        .describe('Start hash reference, e.g. "5:a3f" or "#HL 5:a3f|const x = 1;"'),
-      endRef: z
-        .string()
-        .optional()
-        .describe("End hash reference for range operations. Defaults to startRef when omitted."),
-      replacement: z
-        .string()
-        .max(10_000_000)
-        .optional()
-        .describe("Replacement/inserted content. Required for replace/insert operations."),
-      fileRev: z
-        .string()
-        .optional()
-        .describe(
-          "File revision hash (8-char hex from #HL REV:<hash>). When provided, verifies the file hasn't changed before editing.",
-        ),
+      path: z.string().describe(t("arg.path")),
+      edits: z
+        .array(
+          z.object({
+            operation: z
+              .enum(["replace", "delete", "insert_before", "insert_after"])
+              .describe(t("arg.operation")),
+            startRef: z.string().describe(t("arg.startRef")),
+            endRef: z.string().optional().describe(t("arg.endRef")),
+            replacement: z.string().max(10_000_000).optional().describe(t("arg.replacement")),
+          }),
+        )
+        .describe(t("arg.edits")),
+      fileRev: z.string().optional().describe(t("arg.fileRev")),
     },
     async execute(args: Record<string, unknown>, context: ToolContext) {
-      const { path, operation, startRef, endRef, replacement, fileRev } = args as {
+      const {
+        path,
+        edits: batchEdits,
+        fileRev,
+      } = args as {
         path: string;
-        operation: HashEditOperation;
-        startRef: string;
-        endRef?: string;
-        replacement?: string;
+        edits?: Array<{
+          operation: HashEditOperation;
+          startRef: string;
+          endRef?: string;
+          replacement?: string;
+        }>;
         fileRev?: string;
       };
       const absPath = isAbsolute(path) ? path : resolve(context.directory, path);
@@ -84,16 +86,16 @@ export function createHashlineEditTool(config: Required<HashlineConfig>, cache?:
         try {
           realParent = realpathSync(parentDir);
         } catch {
-          throw new Error(`Access denied: cannot verify parent directory for "${path}"`);
+          throw new Error(t("tool.accessDeniedParent", { path }));
         }
         if (!isWithin(realParent, realDirectory) && !isWithin(realParent, realWorktree)) {
-          throw new Error(`Access denied: "${path}" resolves outside the project directory`);
+          throw new Error(t("tool.accessDeniedOutside", { path }));
         }
         realAbs = resolve(absPath);
       }
 
       if (!isWithin(realAbs, realDirectory) && !isWithin(realAbs, realWorktree)) {
-        throw new Error(`Access denied: "${path}" resolves outside the project directory`);
+        throw new Error(t("tool.accessDeniedOutside", { path }));
       }
       const displayPath = relative(context.worktree, absPath) || path;
 
@@ -102,66 +104,77 @@ export function createHashlineEditTool(config: Required<HashlineConfig>, cache?:
         current = readFileSync(realAbs, "utf-8");
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to read "${displayPath}": ${reason}`);
+        throw new Error(t("tool.readFailed", { path: displayPath, reason }));
       }
 
       if (config.maxFileSize > 0 && getByteLength(current) > config.maxFileSize) {
-        throw new Error(
-          `File "${displayPath}" exceeds the configured maximum size (${config.maxFileSize} bytes)`,
-        );
+        throw new Error(t("tool.sizeExceeded", { path: displayPath, size: config.maxFileSize }));
       }
 
-      let nextContent: string;
-      let startLine: number;
-      let endLine: number;
+      // The tool is batch-only: edits are always supplied via the `edits` array.
+      if (!Array.isArray(batchEdits) || batchEdits.length === 0) {
+        throw new Error(t("tool.noEdits", { path: displayPath }));
+      }
+      const edits: HashEditInput[] = batchEdits.map((e) => ({
+        operation: e.operation,
+        startRef: e.startRef,
+        endRef: e.endRef,
+        replacement: e.replacement,
+        fileRev,
+      }));
+
+      let result: ReturnType<typeof applyHashEdits>;
       try {
-        const result = applyHashEdit(
-          {
-            operation: operation,
-            startRef: startRef,
-            endRef: endRef,
-            replacement: replacement,
-            fileRev: fileRev,
-          },
-          current,
-          config.hashLength || undefined,
-        );
-        nextContent = result.content;
-        startLine = result.startLine;
-        endLine = result.endLine;
+        result = applyHashEdits(edits, current, config.hashLength || undefined);
       } catch (error) {
         if (error instanceof HashlineError) {
-          throw new Error(`Hashline edit failed for "${displayPath}":\n${error.toDiagnostic()}`);
+          throw new Error(
+            t("tool.editFailedDiag", { path: displayPath, diagnostic: error.toDiagnostic() }),
+          );
         }
         const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Hashline edit failed for "${displayPath}": ${reason}`);
+        throw new Error(t("tool.editFailed", { path: displayPath, reason }));
       }
 
       try {
-        writeFileSync(realAbs, nextContent, "utf-8");
+        writeFileSync(realAbs, result.content, "utf-8");
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to write "${displayPath}": ${reason}`);
+        throw new Error(t("tool.writeFailed", { path: displayPath, reason }));
       }
 
       if (cache) {
         cache.invalidate(realAbs);
       }
 
+      const ranges = result.edits
+        .map((e, i) =>
+          t("tool.range", {
+            index: i + 1,
+            operation: e.operation,
+            start: e.startLine,
+            end: e.endLine,
+          }),
+        )
+        .join("\n");
+
       context.metadata({
-        title: `hashline_edit: ${operation} ${displayPath}`,
+        title: t("tool.metadataTitle", { count: edits.length, path: displayPath }),
         metadata: {
           path: displayPath,
-          operation: operation,
-          startLine,
-          endLine,
+          count: edits.length,
+          edits: result.edits.map((e) => ({
+            operation: e.operation,
+            startLine: e.startLine,
+            endLine: e.endLine,
+          })),
         },
       });
 
       return [
-        `Applied ${operation} to ${displayPath}.`,
-        `Resolved range: ${startLine}-${endLine}.`,
-        "Re-read the file to get fresh hash references before the next edit.",
+        t("tool.applied", { count: edits.length, path: displayPath }),
+        ranges,
+        t("tool.reread"),
       ].join("\n");
     },
   };
