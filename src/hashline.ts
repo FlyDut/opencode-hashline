@@ -1031,3 +1031,52 @@ export function getByteLength(content: string): number {
 export function detectLineEnding(content: string): "\r\n" | "\n" {
   return content.includes("\r\n") ? "\r\n" : "\n";
 }
+
+/**
+ * Sanitize and validate a raw parsed config object.
+ * Accepts only known keys with expected types; silently drops invalid values.
+ * This prevents prototype pollution, type confusion, and prompt injection via
+ * a malicious or hand-crafted config file.
+ *
+ * Defined here (instead of src/index.ts) so both the V1 and V2 adapters can
+ * reuse it without creating a circular import.
+ */
+export function sanitizeConfig(raw: unknown): HashlineConfig {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
+  const r = raw as Record<string, unknown>;
+  const result: HashlineConfig = {};
+
+  if (Array.isArray(r.exclude)) {
+    result.exclude = r.exclude
+      .filter((p): p is string => typeof p === "string" && p.length <= 512)
+      .slice(0, 1000);
+  }
+  if (typeof r.maxFileSize === "number" && Number.isFinite(r.maxFileSize) && r.maxFileSize >= 0) {
+    result.maxFileSize = r.maxFileSize;
+  }
+  if (typeof r.hashLength === "number" && Number.isFinite(r.hashLength)) {
+    result.hashLength = Math.max(0, Math.min(8, Math.floor(r.hashLength)));
+  }
+  if (typeof r.cacheSize === "number" && Number.isFinite(r.cacheSize) && r.cacheSize > 0) {
+    result.cacheSize = Math.min(Math.floor(r.cacheSize), 10_000);
+  }
+  if (r.prefix === false) {
+    result.prefix = false;
+  } else if (typeof r.prefix === "string") {
+    // Only printable ASCII, no newlines, max 20 chars — prevents prompt injection
+    if (/^[\x20-\x7E]{0,20}$/.test(r.prefix)) {
+      result.prefix = r.prefix;
+    }
+  }
+  if (typeof r.debug === "boolean") {
+    result.debug = r.debug;
+  }
+  if (typeof r.fileRev === "boolean") {
+    result.fileRev = r.fileRev;
+  }
+  if (typeof r.locale === "string" && /^[a-z]{2}(-[A-Za-z]{2})?$/i.test(r.locale)) {
+    result.locale = r.locale;
+  }
+
+  return result;
+}

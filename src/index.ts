@@ -23,7 +23,7 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "@opencode-ai/plugin";
-import { HashlineCache, type HashlineConfig, resolveConfig } from "./hashline";
+import { HashlineCache, type HashlineConfig, resolveConfig, sanitizeConfig } from "./hashline";
 import { createHashlineEditTool } from "./hashline-tool";
 import {
   createFileEditBeforeHook,
@@ -32,6 +32,7 @@ import {
   setDebug,
 } from "./hooks";
 import { resolveLocale, setLocale } from "./i18n";
+import { createV2Setup } from "./v2";
 
 const CONFIG_FILENAME = "opencode-hashline.json";
 
@@ -70,46 +71,11 @@ function writeTempFile(tempDir: string, content: string): string {
  * Accepts only known keys with expected types; silently drops invalid values.
  * This prevents prototype pollution, type confusion, and prompt injection via
  * a malicious or hand-crafted config file.
+ *
+ * Re-exported from ./hashline so the V1 and V2 adapters share one implementation
+ * without circular imports.
  */
-export function sanitizeConfig(raw: unknown): HashlineConfig {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
-  const r = raw as Record<string, unknown>;
-  const result: HashlineConfig = {};
-
-  if (Array.isArray(r.exclude)) {
-    result.exclude = r.exclude
-      .filter((p): p is string => typeof p === "string" && p.length <= 512)
-      .slice(0, 1000);
-  }
-  if (typeof r.maxFileSize === "number" && Number.isFinite(r.maxFileSize) && r.maxFileSize >= 0) {
-    result.maxFileSize = r.maxFileSize;
-  }
-  if (typeof r.hashLength === "number" && Number.isFinite(r.hashLength)) {
-    result.hashLength = Math.max(0, Math.min(8, Math.floor(r.hashLength)));
-  }
-  if (typeof r.cacheSize === "number" && Number.isFinite(r.cacheSize) && r.cacheSize > 0) {
-    result.cacheSize = Math.min(Math.floor(r.cacheSize), 10_000);
-  }
-  if (r.prefix === false) {
-    result.prefix = false;
-  } else if (typeof r.prefix === "string") {
-    // Only printable ASCII, no newlines, max 20 chars — prevents prompt injection
-    if (/^[\x20-\x7E]{0,20}$/.test(r.prefix)) {
-      result.prefix = r.prefix;
-    }
-  }
-  if (typeof r.debug === "boolean") {
-    result.debug = r.debug;
-  }
-  if (typeof r.fileRev === "boolean") {
-    result.fileRev = r.fileRev;
-  }
-  if (typeof r.locale === "string" && /^[a-z]{2}(-[A-Za-z]{2})?$/i.test(r.locale)) {
-    result.locale = r.locale;
-  }
-
-  return result;
-}
+export { sanitizeConfig } from "./hashline";
 
 /**
  * Try to read and parse a JSON config file. Returns undefined if not found.
@@ -309,13 +275,34 @@ export function createHashlinePlugin(userConfig?: HashlineConfig): Plugin {
 /**
  * Hashline plugin for OpenCode (default instance with default config).
  *
- * Named export following the OpenCode plugin convention:
+ * Named export following the OpenCode V1 plugin convention:
  * @see https://opencode.ai/docs/plugins/
  */
 export const HashlinePlugin: Plugin = createHashlinePlugin();
 
-// Default export for backward compatibility
-export default HashlinePlugin;
+// ---------------------------------------------------------------------------
+// Dual-compatible export (V1 + V2)
+//
+// OpenCode 1.18+ and OpenCode 2.0 load plugins through the module default
+// export, but they expect different shapes:
+//
+// - V1 (1.18+): `readV1Plugin` accepts an object `{ id, server }` and calls
+//   `server(input, options)` to obtain the classic Hooks object.
+// - V2: the loader validates `default` as an object and calls `setup(ctx)`;
+//   unknown extra fields (such as `server`) are tolerated.
+//
+// Exporting both keys on one object lets the same package work on both
+// runtimes. Older V1 releases (before the object form) are not supported;
+// use V1.18 or newer.
+// ---------------------------------------------------------------------------
+
+export default {
+  id: "flydut.opencode-hashline",
+  /** V1 plugin entrypoint: (input, options) => Promise<Hooks> */
+  server: HashlinePlugin,
+  /** V2 plugin entrypoint: (ctx) => Promise<void> */
+  setup: createV2Setup(),
+};
 
 // Re-export types only (types are erased at runtime, so they don't
 // create callable exports that would confuse OpenCode's plugin loader)

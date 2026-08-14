@@ -7,5 +7,9 @@ export default defineConfig({
   clean: true,
   target: "esnext",
   outDir: "dist",
-  external: ["@opencode-ai/plugin", "@opencode-ai/sdk", "zod"],
+  // zod is bundled so the V2 loader can run the plugin without installing
+  // dependencies (V2 imports local plugins directly; @opencode-ai/plugin and
+  // @opencode-ai/sdk stay external because they are type-only imports).
+  external: ["@opencode-ai/plugin", "@opencode-ai/sdk"],
+  noExternal: ["zod"],
 });
